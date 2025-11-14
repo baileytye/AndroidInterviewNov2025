@@ -2,14 +2,21 @@ package com.gideondev.echotextapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.gideondev.echotextapp.validation.TextValidator
 
 class EchoTextViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(UiState())
     val uiState = _uiState.stateIn(viewModelScope, SharingStarted.Eagerly, _uiState.value)
+
+    private val validator = TextValidator.getInstance()
+    var submissionCount = 0
 
     /**
      * This function validate user inputted text and update the UiState.
@@ -18,17 +25,26 @@ class EchoTextViewModel : ViewModel() {
      * by updating the inputtedText variable.
      */
     fun echoText(value: String) {
-        if (value.isEmpty()) {
-            _uiState.update {
-                it.copy(
-                    error = "Empty Text field. Please input text in the text field"
-                )
+        viewModelScope.launch {
+            val validationError = withContext(Dispatchers.IO) {
+                validator.validateText(value)
             }
-        } else {
-            _uiState.update {
-                it.copy(
-                    inputtedText = value
-                )
+
+            if (validationError != null) {
+                _uiState.update {
+                    it.copy(error = validationError, isValid = false)
+                }
+            } else {
+                submissionCount++
+                val processedText = "Echo #$submissionCount: $value (Validations: ${validator.getValidationCount()})"
+
+                _uiState.update {
+                    it.copy(
+                        inputtedText = processedText,
+                        error = null,
+                        isValid = true
+                    )
+                }
             }
         }
     }
@@ -51,6 +67,7 @@ class EchoTextViewModel : ViewModel() {
 
     data class UiState(
         val error: String? = null,
-        val inputtedText: String = ""
+        val inputtedText: String = "",
+        val isValid: Boolean = true
     )
 }
